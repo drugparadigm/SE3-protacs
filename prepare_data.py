@@ -34,6 +34,6 @@ for _, row in df.iterrows():
     if warhead_smiles:
         conversion(warhead_smiles,"warhead",compound_id)
     if e3_ligase_smiles:
-        conversion(e3_ligase_smiles,"e3_ligase",compound_id)
+        conversion(e3_ligase_smiles,"e3_ligand",compound_id)
 
 print("Conversion complete.")
