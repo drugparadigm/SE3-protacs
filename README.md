@@ -14,7 +14,7 @@ This repository implements **SE3-PROTACs**, a structure-equivariant deep learnin
 - **ESM-2 embeddings** for protein sequences  
 - **Feature fusion** of molecules and proteins  
 - **Input**:  
-  - PROTAC components (`.mol2` files for warhead, linker, E3 ligand)  
+  - PROTAC components (smiles for warhead, linker, E3 ligand)  
   - Proteins (FASTA string for POI and E3 ligase)  
 - **Output**: PROTAC **degradation prediction** (0/1)  
 
@@ -28,7 +28,7 @@ This repository implements **SE3-PROTACs**, a structure-equivariant deep learnin
 git clone https://github.com/drugparadigm/SE3-protacs.git
 cd SE3-protacs
 conda env create -f environment.yml
-conda activate se3protac
+conda activate se3protacs
 ```
 
 
@@ -36,7 +36,7 @@ conda activate se3protac
 
 Place your PROTAC data in the data/ folder.
 
-PROTAC components: .mol2 files
+PROTAC components: smiles
 
 Proteins: FASTA strings
 
@@ -54,4 +54,9 @@ Training logs and model checkpoints will be saved inside the model/ directory.
 
 🔍 Inference
 Run on one sample PROTAC
-```python casestudy.py```
+```python casestudy.py \
+  --ligase_smi data/casestudy/e3_ligase_ligand.smi \
+  --ligase_fa data/casestudy/e3_ligase.fa \
+  --target_smi data/casestudy/warhead.smi \
+  --target_fa data/casestudy/target.fa \
+  --linker_smi data/casestudy/linker.smi```
