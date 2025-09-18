@@ -54,9 +54,11 @@ Training logs and model checkpoints will be saved inside the model/ directory.
 
 🔍 Inference
 Run on one sample PROTAC
-```python casestudy.py \
+```
+python casestudy.py\
   --ligase_smi data/casestudy/e3_ligase_ligand.smi \
   --ligase_fa data/casestudy/e3_ligase.fa \
   --target_smi data/casestudy/warhead.smi \
   --target_fa data/casestudy/target.fa \
-  --linker_smi data/casestudy/linker.smi```
+  --linker_smi data/casestudy/linker.smi
+```
