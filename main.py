@@ -11,7 +11,7 @@ from torch.utils.tensorboard import SummaryWriter
 from torch.utils.data import DataLoader
 
 
-from dataset_split import PROTACDataset, collater
+from dataset import PROTACDataset, collater
 from model import *
 from train import train, valids
 
