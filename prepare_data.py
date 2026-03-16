@@ -4,9 +4,9 @@ from openbabel import pybel,openbabel
 openbabel.obErrorLog.SetOutputLevel(0)
 
 
-df = pd.read_csv('data/train.csv') 
+df = pd.read_csv('data/1979_samples.csv') 
 
-output_base = "data/mol2_files"
+output_base = "data/mol2_files/"
 os.makedirs(output_base, exist_ok=True)
 
 def conversion(smiles, prefix, compound_id):
