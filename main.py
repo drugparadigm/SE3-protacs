@@ -18,7 +18,7 @@ from train import train, valids
 BATCH_SIZE = 2
 EPOCH = 100
 LEARNING_RATE = 0.0001
-TRAIN_NAME = "SE3-PROTACs_1979_ESM3"
+TRAIN_NAME = "SE3-PROTACs"
 root = "data"
 logging.basicConfig(filename="log/" + TRAIN_NAME + ".log", filemode="w", level=logging.DEBUG)
 RANDOM_SEED = 42
@@ -111,7 +111,7 @@ def main():
     logging.info(f"Validation data: {len(val_dataset)}")
     
     # ==================== CREATE DATALOADERS ====================
-    num_workers = 2
+    num_workers = 0
     
     print(f"\nCreating data loaders...")
     print(f"  Batch size: {BATCH_SIZE}")
@@ -123,7 +123,7 @@ def main():
         shuffle=True,
         collate_fn=collater,
         num_workers=num_workers,
-        pin_memory=True,
+        pin_memory=False,
         drop_last=True
     )
     
@@ -132,7 +132,7 @@ def main():
         batch_size=BATCH_SIZE, 
         collate_fn=collater,
         num_workers=num_workers,
-        pin_memory=True
+        pin_memory=False
     )
     
     logging.info(f"DataLoaders created with batch_size={BATCH_SIZE}, num_workers={num_workers}")
@@ -156,7 +156,7 @@ def main():
         target_ligand_model,
         target_model,
         linker_model,
-        dim=960
+        dim=320
     )
 
     
