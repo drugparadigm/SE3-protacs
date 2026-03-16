@@ -44,6 +44,14 @@ Convert SMILES → mol2 format using:
 
 ```python prepare_data.py```
 
+Then pre-compute ESM embeddings:  
+
+```bash
+
+python pre_compute_emb.py
+
+```
+
 🚀 Training
 
 Run the main training script:
