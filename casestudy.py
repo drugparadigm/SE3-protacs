@@ -9,16 +9,18 @@ import warnings
 
 warnings.filterwarnings("ignore")
 
+# ------------------------------------------------------------------
+# Config
+# ------------------------------------------------------------------
 MODEL_PATH = "model/SE3-PROTACs.pt"
-
-device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-BATCH_SIZE = 1
-MAX_LENGTH = 1000
+DEVICE = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
 LIGAND_ATOM_TYPE = ['C', 'N', 'O', 'S', 'F', 'Cl', 'Br', 'I', 'P']
 EDGE_ATTR = {'1': 1, '2': 2, '3': 3, 'ar': 4, 'am': 5}
 
-
+# ------------------------------------------------------------------
+# SMILES → Graph
+# ------------------------------------------------------------------
 def mol2graph(smiles, ATOM_TYPE):
     mol2_str = smiles2mol2(smiles)
     lines = mol2_str.splitlines(keepends=True)
@@ -31,8 +33,7 @@ def mol2graph(smiles, ATOM_TYPE):
     atom_lines = lines[lines.index('@<TRIPOS>ATOM\n') + 1:atom_end_line]
     bond_lines = lines[lines.index('@<TRIPOS>BOND\n') + 1:]
 
-    atoms = []
-    positions = []
+    atoms, positions = [], []
     for atom in atom_lines:
         parts = atom.split()
         ele = parts[5].split('.')[0]
@@ -44,75 +45,18 @@ def mol2graph(smiles, ATOM_TYPE):
     edge_attr = [EDGE_ATTR[i.split()[3]] for i in bond_lines]
 
     x = torch.tensor(atoms, dtype=torch.long)
+    pos = torch.tensor(positions, dtype=torch.float)
     edge_idx = torch.tensor([edge_1 + edge_2, edge_2 + edge_1], dtype=torch.long)
     edge_attr = torch.tensor(edge_attr + edge_attr, dtype=torch.long)
 
-    positions = torch.tensor(positions, dtype=torch.float)
     tdEdge = to_scipy_sparse_matrix(edge_idx, edge_attr).todense()
     tdEdge = torch.from_numpy(np.array(tdEdge, dtype=np.float32).flatten())
 
-    graph = Data(x=x, pos=positions, edge=tdEdge)
-    return graph
+    return Data(x=x, pos=pos, edge=tdEdge)
 
-
-def read_fasta(file_path):
-    """Read first sequence from .fa/.fasta file."""
-    with open(file_path, "r") as f:
-        lines = f.readlines()
-    seq = "".join([l.strip() for l in lines if not l.startswith(">")])
-    return seq
-
-
-def read_smi(file_path):
-    """Read first SMILES string from .smi file."""
-    with open(file_path, "r") as f:
-        smiles = f.readline().strip()
-    return smiles
-
-
-def predict_for_molecule(model, ligase_ligand_smiles, ligase_seq,
-                         target_ligand_smiles, target_seq,
-                         linker_smiles):
-    try:
-        esm = ESMEmbedder(device='cuda' if torch.cuda.is_available() else 'cpu')
-
-        # Convert SMILES → graph
-        warhead = mol2graph(target_ligand_smiles, LIGAND_ATOM_TYPE)      # target_ligand
-        ligase_ligand = mol2graph(ligase_ligand_smiles, LIGAND_ATOM_TYPE)  # ligase_ligand
-        linker = mol2graph(linker_smiles, LIGAND_ATOM_TYPE)              # linker
-
-        # Embed protein sequences
-        e3_ligase_sequence = esm.embed_sequence(ligase_seq)
-        target_sequence = esm.embed_sequence(target_seq)
-
-        sample = {
-            "ligase_ligand": ligase_ligand,
-            "ligase": e3_ligase_sequence,
-            "target_ligand": warhead,
-            "target": target_sequence,
-            "linker": linker,
-            "label": 0  # Dummy label for inference
-        }
-
-    except Exception as e:
-        print(f"[!] Error processing inputs: {e}")
-        return None
-
-    with torch.no_grad():
-        ligase = sample['ligase'].unsqueeze(0)
-        target = sample['target'].unsqueeze(0)
-
-        predict, _, _ = model(
-            sample['ligase_ligand'].to(device),
-            ligase.to(device),
-            sample['target_ligand'].to(device),
-            target.to(device),
-            sample['linker'].to(device)
-        )
-        pred_y = torch.max(predict, 1)[1].item()
-    return pred_y
-
-
+# ------------------------------------------------------------------
+# Load model
+# ------------------------------------------------------------------
 def load_model():
     target_ligand_model = GraphTransformer(num_embeddings=10)
     ligase_ligand_model = GraphTransformer(num_embeddings=10)
@@ -126,56 +70,87 @@ def load_model():
         ligase_model=ligase_model,
         target_ligand_model=target_ligand_model,
         target_model=target_model,
-        linker_model=linker_model
+        linker_model=linker_model,
     )
 
-    try:
-        loaded_content = torch.load(MODEL_PATH,
-                                    map_location=lambda storage, loc: storage)
-        model.load_state_dict(loaded_content['model_state_dict'])
-    except Exception as e:
-        print(f"[!] Error loading model from {MODEL_PATH}: {e}")
-        return None
-
+    ckpt = torch.load(MODEL_PATH, map_location="cpu")
+    model.load_state_dict(ckpt["model_state_dict"])
+    model.to(DEVICE)
+    model.eval()
     return model
 
+# ------------------------------------------------------------------
+# Read input files
+# ------------------------------------------------------------------
+def read_fasta(file_path):
+    with open(file_path, "r") as f:
+        lines = f.readlines()
+    return "".join([l.strip() for l in lines if not l.startswith(">")])
 
+def read_smi(file_path):
+    with open(file_path, "r") as f:
+        return f.readline().strip()
+
+# ------------------------------------------------------------------
+# Single sample prediction
+# ------------------------------------------------------------------
+def predict_single(model, ligase_smi, ligase_seq, target_smi, target_seq, linker_smi, esm):
+    ligase_ligand = mol2graph(ligase_smi, LIGAND_ATOM_TYPE)
+    warhead = mol2graph(target_smi, LIGAND_ATOM_TYPE)
+    linker = mol2graph(linker_smi, LIGAND_ATOM_TYPE)
+
+    e3_ligase_emb = esm.embed_sequence(ligase_seq)
+    target_emb = esm.embed_sequence(target_seq)
+
+    with torch.no_grad():
+        logits, _, _ = model(
+            ligase_ligand.to(DEVICE),
+            e3_ligase_emb.unsqueeze(0).to(DEVICE),
+            warhead.to(DEVICE),
+            target_emb.unsqueeze(0).to(DEVICE),
+            linker.to(DEVICE),
+        )
+
+        probs = torch.softmax(logits, dim=1)
+        score = probs[:, 1].item()
+        pred = torch.argmax(probs, dim=1).item()
+
+    return pred, score
+
+# ------------------------------------------------------------------
+# Main
+# ------------------------------------------------------------------
 def main():
     parser = argparse.ArgumentParser()
-    parser.add_argument("--ligase_smi", type=str, required=True, help="Path to E3 ligase ligand .smi file")
-    parser.add_argument("--ligase_fa", type=str, required=True, help="Path to E3 ligase protein .fa file")
-    parser.add_argument("--target_smi", type=str, required=True, help="Path to target ligand (warhead) .smi file")
-    parser.add_argument("--target_fa", type=str, required=True, help="Path to target protein .fa file")
-    parser.add_argument("--linker_smi", type=str, required=True, help="Path to linker .smi file")
-
+    parser.add_argument("--ligase_smi", type=str, required=True)
+    parser.add_argument("--ligase_fa",  type=str, required=True)
+    parser.add_argument("--target_smi", type=str, required=True)
+    parser.add_argument("--target_fa",  type=str, required=True)
+    parser.add_argument("--linker_smi", type=str, required=True)
     args = parser.parse_args()
 
-    # Read inputs
-    ligase_smiles = read_smi(args.ligase_smi)
+    ligase_smi = read_smi(args.ligase_smi)
     ligase_seq = read_fasta(args.ligase_fa)
-    target_smiles = read_smi(args.target_smi)
+    target_smi = read_smi(args.target_smi)
     target_seq = read_fasta(args.target_fa)
-    linker_smiles = read_smi(args.linker_smi)
+    linker_smi = read_smi(args.linker_smi)
 
+    print("Loading model...")
     model = load_model()
-    if model is None:
-        print("Failed to load model. Exiting.")
-        return
 
-    model.to(device)
-    model.eval()
+    print("Loading ESM embedder...")
+    esm = ESMEmbedder(device=str(DEVICE))
 
-    print("Model loaded. Starting prediction...")
-    result = predict_for_molecule(
-        model,
-        ligase_smiles,
-        ligase_seq,
-        target_smiles,
-        target_seq,
-        linker_smiles
+    print("Running prediction...")
+    pred, score = predict_single(
+        model, ligase_smi, ligase_seq,
+        target_smi, target_seq, linker_smi, esm
     )
-    print(f"Prediction result: {result}")
 
+    print("\n================ PREDICTION RESULT ================")
+    print(f"Degradation Score : {score:.4f}")
+    print(f"Prediction        : {'Good Degrader' if pred == 1 else 'Bad Degrader'} ({pred})")
+    print("====================================================")
 
 if __name__ == "__main__":
     main()
