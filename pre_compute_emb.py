@@ -63,7 +63,7 @@ def precompute_embeddings(csv_file, output_dir, device='cuda:2'):
 if __name__ == "__main__":
     # Configure these paths according to your setup
     CSV_FILE = 'data/1979_samples.csv'
-    OUTPUT_DIR = 'data/1979_esm3/'
+    OUTPUT_DIR = 'data/esm/'
     DEVICE = 'cuda:1' if torch.cuda.is_available() else 'cpu'
     
     precompute_embeddings(CSV_FILE, OUTPUT_DIR, DEVICE)
